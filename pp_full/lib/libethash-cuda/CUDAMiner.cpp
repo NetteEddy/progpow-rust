@@ -138,7 +138,6 @@ void CUDAMiner::compute(const void* header, uint64_t height, int epoch, uint64_t
 		}
 
 		current.header = new h256 { (const uint8_t*)header, h256::ConstructFromPointer };
-
 		search(current.header->data(), target, false, startNonce);
 	}
 	catch (cuda_runtime_error const& _e)
@@ -397,7 +396,8 @@ bool CUDAMiner::cuda_init(
 			CUdevice device;
 			CUcontext context;
 			cuDeviceGet(&device, m_device_num);
-			cuCtxCreate(&context, s_scheduleFlag, device);
+			CUctxCreateParams ctxCreateParams = {};
+			cuCtxCreate(&context, &ctxCreateParams, s_scheduleFlag, device);
 			//We need to reset the light and the Dag for the following code to reallocate
 			//since cudaDeviceReset() frees all previous allocated memory
 			*(data + m_device_num) = nullptr;
@@ -416,10 +416,16 @@ bool CUDAMiner::cuda_init(
 		CUDA_SAFE_CALL(cudaMemcpy(reinterpret_cast<void*>(light), _lightData, _lightBytes, cudaMemcpyHostToDevice));
 		*(data + m_device_num) = light;
 		
-		if(dagElms != m_dag_elms || !dag) // create buffer for dag
+		// Preserve the reinitialization decision before cudaMalloc changes
+		// 'dag' from nullptr to a valid pointer. The original code tested
+		// '!dag' again after allocation, which could skip creation of the
+		// search buffers and CUDA streams.
+		bool recreateDag = (dagElms != m_dag_elms || !dag);
+
+		if(recreateDag) // create buffer for dag
 			CUDA_SAFE_CALL(cudaMalloc(reinterpret_cast<void**>(&dag), dagBytes));
-		
-		if(dagElms != m_dag_elms || !dag)
+
+		if(recreateDag)
 		{
 			// create mining buffers
 			//cudalog << "Generating mining buffers";
@@ -440,7 +446,7 @@ bool CUDAMiner::cuda_init(
 					/*cudalog << "Generating DAG for GPU #" << m_device_num <<
 							   " with dagBytes: " << dagBytes <<" gridSize: " << s_gridSize;*/
 					ethash_generate_dag(dag, dagBytes, light, lightWords, s_gridSize, s_blockSize, m_streams[0], m_device_num);
-					//cudalog << "Finished DAG";
+					CUDA_SAFE_CALL(cudaStreamSynchronize(m_streams[0]));
 
 					if (_cpyToHost)
 					{
@@ -586,7 +592,9 @@ void CUDAMiner::search(
 	bool initialize = false;
 	if (memcmp(&m_current_header, header, sizeof(hash32_t)))
 	{
-		m_current_header = *reinterpret_cast<hash32_t const *>(header);
+		// Copy the raw 32-byte header without relying on pointer alignment
+		// or strict-aliasing assumptions.
+		memcpy(&m_current_header, header, sizeof(hash32_t));
 		initialize = true;
 	}
 	if (m_current_target != target)
@@ -613,9 +621,10 @@ void CUDAMiner::search(
 	}
 	else
 	{
-		if (initialize)
+		if (initialize || m_starting_nonce != _startN)
 		{
-			m_current_nonce = 0;//get_start_nonce();
+			m_starting_nonce = _startN;
+			m_current_nonce = m_starting_nonce;
 			m_current_index = 0;
 			CUDA_SAFE_CALL(cudaDeviceSynchronize());
 			for (unsigned int i = 0; i < s_numStreams; i++)

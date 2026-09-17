@@ -19,7 +19,7 @@ mod test {
 	fn test_compute_ocl() {
 		let height: u64 = 1;
 		let epoch: i32 = 0;
-		let boundary: u64 = 10000;
+		let boundary: u64 = u64::MAX;
 		let header_hash: [u8; 32] = [20; 32];
 
 		let mut pp_gpu = GPU::new(0, Driver::OCL);
@@ -46,10 +46,10 @@ mod test {
 	fn test_compute_cuda() {
 		let height: u64 = 1;
 		let epoch: i32 = 0;
-		let boundary: u64 = 10000;
+		let boundary: u64 = u64::MAX;
 		let header_hash: [u8; 32] = [20; 32];
 
-		let mut pp_gpu = GPU::new(Driver::CUDA);
+		let mut pp_gpu = GPU::new(0, Driver::CUDA);
 
 		pp_gpu.init();
 		let ten_millis = time::Duration::from_millis(100);

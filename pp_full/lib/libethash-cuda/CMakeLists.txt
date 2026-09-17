@@ -2,9 +2,8 @@
 # The normal build depends on it properly and if the kernel file is changed, then
 # a rebuild of libethash-cuda should be triggered
 
-set(CMAKE_C_COMPILER /usr/bin/gcc-7)
-set(CMAKE_CXX_COMPILER /usr/bin/g++-7)
-set(CUDA_ARCH 35;37;53;60;61;62;70;75)
+# Use the host compiler selected by the parent CMake project.
+set(CUDA_ARCH 86)
 
 add_custom_command(
 	OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/CUDAMiner_kernel.h
@@ -32,17 +31,9 @@ list(APPEND CUDA_NVCC_FLAGS_DEBUG -G)
 if(COMPUTE AND (COMPUTE GREATER 0))
 	list(APPEND CUDA_NVCC_FLAGS "-gencode arch=compute_${COMPUTE},code=sm_${COMPUTE}")
 else()
-	set(
-		CUDA_NVCC_FLAGS
-		${CUDA_NVCC_FLAGS}
-		"-gencode arch=compute_35,code=sm_35"
-		"-gencode arch=compute_37,code=sm_37"
-		"-gencode arch=compute_53,code=sm_53"
-		"-gencode arch=compute_60,code=sm_60"
-		"-gencode arch=compute_61,code=sm_61"
-		"-gencode arch=compute_62,code=sm_62"
-		"-gencode arch=compute_70,code=sm_70"
-		"-gencode arch=compute_75,code=sm_75"
+	# RTX 3060 / Ampere: Compute Capability 8.6
+	list(APPEND CUDA_NVCC_FLAGS
+		"-gencode arch=compute_86,code=sm_86"
 	)
 endif()
 

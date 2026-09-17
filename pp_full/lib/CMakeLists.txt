@@ -7,7 +7,6 @@ include(cmake/cable/bootstrap.cmake)
 include(CableBuildInfo)
 include(CableBuildType)
 include(CableToolchains)
-include(HunterGate)
 
 if(NOT APPLE)
   set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fpic -fPIC" CACHE INTERNAL "")
@@ -15,16 +14,10 @@ if(NOT APPLE)
   set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 endif()
 
-include(defaults/HunterCacheServers)
 
 cable_configure_toolchain(DEFAULT cxx11)
 
 set(HUNTER_CONFIGURATION_TYPES Release)
-HunterGate(
-    URL "https://github.com/ruslo/hunter/archive/v0.20.34.tar.gz"
-    SHA1 "2f04d1beffdf39db1c40d8347beb8c10bbe9b8ed"
-    LOCAL
-)
 
 project(progpow)
 set(PROJECT_VERSION 0.15.0.dev0)
@@ -58,17 +51,9 @@ function(configureProject)
 	endif()
 endfunction()
 
-hunter_add_package(Boost COMPONENTS system)
-find_package(Boost CONFIG REQUIRED COMPONENTS system)
-
-hunter_add_package(jsoncpp)
-find_package(jsoncpp CONFIG REQUIRED)
-
-hunter_add_package(libjson-rpc-cpp)
-find_package(libjson-rpc-cpp CONFIG REQUIRED)
-
-hunter_add_package(CppNetlibUri)
-find_package(CppNetlibUri CONFIG REQUIRED)
+# Use the system Boost installation instead of the obsolete Hunter
+# dependency manager. Ubuntu 24.04 provides Boost 1.83.
+find_package(Boost REQUIRED COMPONENTS system)
 
 configureProject()
 

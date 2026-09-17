@@ -21,8 +21,8 @@ pub fn fail_on_empty_directory(name: &str) {
 fn generate_bindings(out_dir: &str) {
 	let bindings = bindgen::Builder::default()
 		.header("lib/libexternal/progpow.h")
-		.blacklist_type("max_align_t")
-		.blacklist_type("_bindgen_ty_1")
+		.blocklist_type("max_align_t")
+		.blocklist_type("_bindgen_ty_1")
 		.generate()
 		.expect("Unable to generate bindings");
 
@@ -34,6 +34,11 @@ fn generate_bindings(out_dir: &str) {
 
 fn compile_cmake() {
 	let mut make = cmake::Config::new("lib");
+
+	// Keep native C/C++ optimized, but retain debug information so GDB
+	// can resolve crashes inside libppow.so to exact source lines.
+	make.profile("RelWithDebInfo");
+	make.define("CMAKE_BUILD_TYPE", "RelWithDebInfo");
 
 	if cfg!(feature = "cuda") {
 		make.define("ETHASHCUDA", "ON");
@@ -47,7 +52,7 @@ fn compile_cmake() {
 		make.define("ETHASHCL", "OFF");
 	}
 
-	make.build_target("").build();
+	make.build_target("ppow").build();
 }
 
 fn exec_if_newer<F: Fn()>(inpath: &str, outpath: &str, build: F) {

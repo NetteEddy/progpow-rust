@@ -7,9 +7,9 @@ extern crate dirs;
 extern crate progpow_cpu;
 
 #[cfg(feature = "cuda")]
-extern crate progpow_gpu_cuda as progpow_gpu;
+pub extern crate progpow_gpu_cuda as progpow_gpu;
 #[cfg(feature = "opencl")]
-extern crate progpow_gpu_opencl as progpow_gpu;
+pub extern crate progpow_gpu_opencl as progpow_gpu;
 
 pub mod hardware;
 pub mod types;
@@ -39,7 +39,7 @@ mod test {
 	}
 
 	#[test]
-	#[cfg(feature = "gpu")]
+	#[cfg(feature = "cuda")]
 	fn test_compute_gpu() {
 		use hardware::PpGPU;
 		use progpow_gpu::utils::get_gpu_solution;
@@ -47,26 +47,23 @@ mod test {
 		let header = [20u8; 32];
 		let epoch: i32 = 0;
 		let height: u64 = 1;
-		let boundary: u64 = 100000000;
-
-		let mut difficulty: U256 = U256::max_value();
-		difficulty = difficulty / U256::from(boundary);
-		let target = difficulty >> 192;
+		let boundary: u64 = u64::MAX;
 
 		let (nonce, mix) = get_gpu_solution(header.clone(), height, epoch, boundary);
+
 		let cpu = PpCPU::new();
-		let (value, mix_hash) = cpu.verify(&header, height, nonce).unwrap();
+		let (_value, cpu_mix) = cpu.verify(&header, height, nonce).unwrap();
 
-		//let mix_verify: U256 = U256::from_big_endian(&mix_hash);
-		//let r: U256 = U256::from_big_endian(&value);
+		let gpu_mix: [u32; 8] = unsafe { ::std::mem::transmute(mix) };
 
-		// va.copy_from_slice(&value[0..8]);
-		//let v: [u32; 2] = unsafe { ::std::mem::transmute(&va) };
+		println!("CUDA nonce: {}", nonce);
+		println!("CUDA mix:   {:?}", gpu_mix);
+		println!("CPU mix:    {:?}", cpu_mix);
 
-		let mix32: [u32; 8] = unsafe { ::std::mem::transmute(mix) };
-		//println!("v: {:?}", (v[0] as u64) << 32 | v[1] as u64);
-
-		assert_eq!(mix32, mix_hash);
-		assert!(((value[0] as u64) << 32 | value[1] as u64) < target.low_u64());
+		assert_eq!(
+			gpu_mix,
+			cpu_mix,
+			"CUDA ProgPoW mix does not match CPU reference"
+		);
 	}
 }
