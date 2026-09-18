@@ -144,8 +144,7 @@ static bool ethash_hash(
 		return false;
 	}
 
-	printf("nonce: %lu", nonce);
-	printf("full_size: %lu", full_size);
+	/* TUI: verbose ethash diagnostics suppressed */
 	//cwarn << "header: " << header_hash;
 
 	// pack hash and nonce together into first 40 bytes of s_mix

@@ -370,8 +370,15 @@ bool CUDAMiner::cuda_init(
 
 		//cudalog << "Using device: " << device_props.name << " (Compute " + to_string(device_props.major) + "." + to_string(device_props.minor) + ")";
 
-		m_search_buf = new volatile search_results *[s_numStreams];
-		m_streams = new cudaStream_t[s_numStreams];
+		// Keep the mining stream/buffer pointer arrays across ProgPoW
+		// reinitializations within the same DAG epoch. Replacing these
+		// arrays here would discard the valid pointers when recreateDag
+		// is false and leave search() with uninitialized entries.
+		if (!m_search_buf)
+			m_search_buf = new volatile search_results *[s_numStreams]();
+
+		if (!m_streams)
+			m_streams = new cudaStream_t[s_numStreams]();
 
 		uint64_t dagBytes = ethash_get_datasize(_light->block_number);
 		uint32_t dagElms   = (unsigned)(dagBytes / (PROGPOW_LANES * PROGPOW_DAG_LOADS * 4));
@@ -391,13 +398,14 @@ bool CUDAMiner::cuda_init(
 				return false;
 			}
 			//We need to reset the device and recreate the dag  
-			cudalog << "Resetting device";
+			// TUI: verbose CUDA diagnostic suppressed
 			CUDA_SAFE_CALL(cudaDeviceReset());
-			CUdevice device;
-			CUcontext context;
-			cuDeviceGet(&device, m_device_num);
-			CUctxCreateParams ctxCreateParams = {};
-			cuCtxCreate(&context, &ctxCreateParams, s_scheduleFlag, device);
+			// Re-establish the CUDA Runtime primary context after reset.
+			// Do not create a separate Driver API context here: streams,
+			// allocations, modules and CUfunction handles must belong to
+			// the same context.
+			CUDA_SAFE_CALL(cudaSetDevice(m_device_num));
+			CUDA_SAFE_CALL(cudaFree(0));
 			//We need to reset the light and the Dag for the following code to reallocate
 			//since cudaDeviceReset() frees all previous allocated memory
 			*(data + m_device_num) = nullptr;
@@ -537,7 +545,7 @@ void CUDAMiner::compileKernel(
 	NVRTC_SAFE_CALL(nvrtcGetProgramLogSize(prog, &logSize));
 	char *log = new char[logSize];
 	NVRTC_SAFE_CALL(nvrtcGetProgramLog(prog, log));
-	cudalog << "Compile log: " << log;
+	// TUI: verbose CUDA diagnostic suppressed
 	delete[] log;
 	NVRTC_SAFE_CALL(compileResult);
 	// Obtain PTX from the program.
@@ -568,8 +576,7 @@ void CUDAMiner::compileKernel(
 		(void*)(1)
 	};
 	CU_SAFE_CALL(cuModuleLoadDataEx(&m_module, ptx, 6, jitOpt, jitOptVal));
-	cudalog << "JIT info: \n" << jitInfo;
-	cudalog << "JIT err: \n" << jitErr;
+	// TUI: verbose CUDA JIT diagnostics suppressed
 	delete[] ptx;
 	delete[] jitInfo;
 	delete[] jitErr;

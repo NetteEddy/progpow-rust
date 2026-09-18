@@ -154,8 +154,8 @@ private:
 
 	CUmodule m_module;
 	CUfunction m_kernel;
-	volatile search_results** m_search_buf;
-	cudaStream_t  * m_streams;
+	volatile search_results** m_search_buf = nullptr;
+	cudaStream_t* m_streams = nullptr;
 
 	/// The local work size for the search
 	static unsigned s_blockSize;
