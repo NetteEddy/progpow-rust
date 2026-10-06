@@ -157,6 +157,11 @@ private:
 	volatile search_results** m_search_buf = nullptr;
 	cudaStream_t* m_streams = nullptr;
 
+	// Nonce base used by the kernel currently associated with each
+	// CUDA stream. This allows completed results to be reconstructed
+	// correctly even when the next search window starts elsewhere.
+	uint64_t* m_stream_nonce_base = nullptr;
+
 	/// The local work size for the search
 	static unsigned s_blockSize;
 	/// The initial global work size for the searches

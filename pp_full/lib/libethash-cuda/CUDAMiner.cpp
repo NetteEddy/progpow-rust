@@ -380,6 +380,9 @@ bool CUDAMiner::cuda_init(
 		if (!m_streams)
 			m_streams = new cudaStream_t[s_numStreams]();
 
+		if (!m_stream_nonce_base)
+			m_stream_nonce_base = new uint64_t[s_numStreams]();
+
 		uint64_t dagBytes = ethash_get_datasize(_light->block_number);
 		uint32_t dagElms   = (unsigned)(dagBytes / (PROGPOW_LANES * PROGPOW_DAG_LOADS * 4));
 		uint32_t lightWords = (unsigned)(_lightBytes / sizeof(node));
@@ -621,9 +624,24 @@ void CUDAMiner::search(
 		}
 		if (m_starting_nonce != _startN)
 		{
-			// reset nonce counter
+			/*
+			 * A changed start nonce denotes a new search window.
+			 *
+			 * The CUDA miner uses multiple asynchronous streams. Results
+			 * belonging to the previous window may therefore still be in
+			 * flight here. Synchronize and discard those buffers before
+			 * moving the nonce cursor. Otherwise nonce_base could be
+			 * calculated from the new window for a result produced in the
+			 * old window.
+			 */
+			CUDA_SAFE_CALL(cudaDeviceSynchronize());
+
+			for (unsigned int i = 0; i < s_numStreams; i++)
+				m_search_buf[i]->count = 0;
+
 			m_starting_nonce = _startN;
 			m_current_nonce = m_starting_nonce;
+			m_current_index = 0;
 		}
 	}
 	else
@@ -641,14 +659,13 @@ void CUDAMiner::search(
 	const uint32_t batch_size = s_gridSize * s_blockSize;
 
 	m_current_index++;
-	m_current_nonce += batch_size;
 	auto stream_index = m_current_index % s_numStreams;
 	cudaStream_t stream = m_streams[stream_index];
 	volatile search_results* buffer = m_search_buf[stream_index];
 	uint32_t found_count = 0;
 	uint64_t nonces[SEARCH_RESULTS];
 	h256 mixes[SEARCH_RESULTS];
-	uint64_t nonce_base = m_current_nonce - s_numStreams * batch_size;
+	uint64_t nonce_base = m_stream_nonce_base[stream_index];
 	if (m_current_index >= s_numStreams)
 	{
 		CUDA_SAFE_CALL(cudaStreamSynchronize(stream));
@@ -663,6 +680,13 @@ void CUDAMiner::search(
 			}
 		}
 	}
+	/*
+	 * Remember the exact nonce base associated with this stream before
+	 * launching it. When the stream is reused later, its results can be
+	 * mapped independently of any intervening spread-window jump.
+	 */
+	m_stream_nonce_base[stream_index] = m_current_nonce;
+
 	bool hack_false = false;
 	void *args[] = {&m_current_nonce, &m_current_header, &m_current_target, &m_dag, &buffer, &hack_false};
 	CU_SAFE_CALL(cuLaunchKernel(m_kernel,
